@@ -339,9 +339,6 @@
           <a href="#estimate" class="btn-cta btn-yellow text-base" id="heroCTA">
             <span>✦</span> Get a Free Estimate
           </a>
-          <a href="tel:5550000000" class="btn-cta btn-purple-outline text-sm">
-            📞 (555) 000-0000
-          </a>
         </div>
 
         <!-- Trust badges -->
@@ -875,9 +872,12 @@ function makeParticle(rect, pad) {
 }
 
 function attachStardust(btn) {
+  const isMouseDevice = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   let effect = null;
+  let autoTimer = null;
 
-  btn.addEventListener('mouseenter', () => {
+  function startEffect() {
+    if (effect) return;
     const rect = btn.getBoundingClientRect();
     const pad = 64;
     const canvas = document.createElement('canvas');
@@ -906,7 +906,6 @@ function attachStardust(btn) {
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       frame++;
-
       for (let i = particles.length - 1; i >= 0; i--) {
         const p = particles[i];
         p.x  += p.vx;
@@ -915,7 +914,6 @@ function attachStardust(btn) {
         p.vx *= 0.993;
         p.alpha -= p.decay;
         if (p.alpha <= 0) { particles.splice(i, 1); continue; }
-
         const a = Math.max(0, p.alpha * (0.6 + 0.4 * Math.sin(frame * p.twinkle + p.phase)));
         ctx.save();
         ctx.globalAlpha = a;
@@ -926,23 +924,60 @@ function attachStardust(btn) {
         else { ctx.beginPath(); ctx.arc(p.x, p.y, p.size * 0.6, 0, Math.PI * 2); ctx.fill(); }
         ctx.restore();
       }
-
       if (particles.length > 0 || spawning) requestAnimationFrame(draw);
       else canvas.remove();
     }
 
-    let interval = setInterval(spawn, 70);
+    const interval = setInterval(spawn, 70);
     spawn();
     requestAnimationFrame(draw);
+    effect = { stop() { clearInterval(interval); spawning = false; } };
+  }
 
-    effect = {
-      stop() { clearInterval(interval); spawning = false; }
-    };
-  });
-
-  btn.addEventListener('mouseleave', () => {
+  function stopEffect() {
     if (effect) { effect.stop(); effect = null; }
-  });
+  }
+
+  if (isMouseDevice) {
+    // Desktop: hover-driven, unchanged behaviour
+    btn.addEventListener('mouseenter', startEffect);
+    btn.addEventListener('mouseleave', stopEffect);
+  } else {
+    // Touch: fire on tap, clean up reliably, and auto-pulse when in view
+    btn.addEventListener('touchstart', startEffect, { passive: true });
+    btn.addEventListener('touchend',   () => setTimeout(stopEffect, 900), { passive: true });
+    btn.addEventListener('touchcancel', stopEffect, { passive: true });
+
+    // Auto-pulse: sparkle for 1.4 s, pause 2.8 s, repeat while button is visible
+    let firstPulse = true;
+    function schedulePulse() {
+      const delay = firstPulse ? 400 : 2800;
+      firstPulse = false;
+      autoTimer = setTimeout(() => {
+        startEffect();
+        autoTimer = setTimeout(() => {
+          stopEffect();
+          schedulePulse();
+        }, 1400);
+      }, delay);
+    }
+
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        schedulePulse();
+      } else {
+        clearTimeout(autoTimer);
+        autoTimer = null;
+        stopEffect();
+      }
+    }, { threshold: 0.6 });
+    obs.observe(btn);
+
+    // Safety net: kill everything when tab is backgrounded / user navigates away
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { clearTimeout(autoTimer); autoTimer = null; stopEffect(); }
+    });
+  }
 }
 
 document.querySelectorAll('.btn-cta, .btn-yellow, .btn-purple-outline').forEach(attachStardust);
