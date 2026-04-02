@@ -931,11 +931,15 @@ function attachStardust(btn) {
     const interval = setInterval(spawn, 70);
     spawn();
     requestAnimationFrame(draw);
-    effect = { stop() { clearInterval(interval); spawning = false; } };
+    effect = { canvas, stop() { clearInterval(interval); spawning = false; } };
   }
 
-  function stopEffect() {
-    if (effect) { effect.stop(); effect = null; }
+  function stopEffect(immediate) {
+    if (effect) {
+      effect.stop();
+      if (immediate && effect.canvas.parentNode) effect.canvas.remove();
+      effect = null;
+    }
   }
 
   if (isMouseDevice) {
@@ -946,7 +950,10 @@ function attachStardust(btn) {
     // Touch: fire on tap, clean up reliably, and auto-pulse when in view
     btn.addEventListener('touchstart', startEffect, { passive: true });
     btn.addEventListener('touchend',   () => setTimeout(stopEffect, 900), { passive: true });
-    btn.addEventListener('touchcancel', stopEffect, { passive: true });
+    btn.addEventListener('touchcancel', () => stopEffect(true), { passive: true });
+
+    // Immediately kill canvas when user scrolls — prevents fixed canvas drifting from button
+    window.addEventListener('scroll', () => stopEffect(true), { passive: true });
 
     // Auto-pulse: sparkle for 1.4 s, pause 2.8 s, repeat while button is visible
     let firstPulse = true;
@@ -968,14 +975,14 @@ function attachStardust(btn) {
       } else {
         clearTimeout(autoTimer);
         autoTimer = null;
-        stopEffect();
+        stopEffect(true);
       }
     }, { threshold: 0.6 });
     obs.observe(btn);
 
     // Safety net: kill everything when tab is backgrounded / user navigates away
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) { clearTimeout(autoTimer); autoTimer = null; stopEffect(); }
+      if (document.hidden) { clearTimeout(autoTimer); autoTimer = null; stopEffect(true); }
     });
   }
 }
